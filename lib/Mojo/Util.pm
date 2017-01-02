@@ -7,7 +7,6 @@ use Digest::MD5 qw(md5 md5_hex);
 use Digest::SHA qw(hmac_sha1_hex sha1 sha1_hex);
 use Encode 'find_encoding';
 use Exporter 'import';
-use File::Find 'find';
 use Getopt::Long 'GetOptionsFromArray';
 use IO::Poll qw(POLLIN POLLPRI);
 use List::Util 'min';
@@ -56,12 +55,15 @@ my %CACHE;
 
 our @EXPORT_OK = (
   qw(b64_decode b64_encode camelize class_to_file class_to_path decamelize),
-  qw(decode deprecated dumper encode files getopt hmac_sha1_sum html_unescape),
+  qw(decode deprecated dumper encode getopt hmac_sha1_sum html_unescape),
   qw(md5_bytes md5_sum monkey_patch punycode_decode punycode_encode quote),
   qw(secure_compare sha1_bytes sha1_sum slurp split_cookie_header),
   qw(split_header spurt steady_time tablify term_escape trim unindent unquote),
   qw(url_escape url_unescape xml_escape xor_encode)
 );
+
+# DEPRECATED!
+push @EXPORT_OK, 'files';
 
 # Aliases
 monkey_patch(__PACKAGE__, 'b64_decode',    \&decode_base64);
@@ -125,18 +127,11 @@ sub dumper {
 
 sub encode { _encoding($_[0])->encode("$_[1]") }
 
+# DEPRECATED!
 sub files {
-  my ($dir, $options) = (shift, shift // {});
-
-  # This may break in the future, but is worth it for performance
-  local $File::Find::skip_pattern = qr/^\./ unless $options->{hidden};
-
-  my %files;
-  my $want = sub { $files{$File::Find::name}++ };
-  my $post = sub { delete $files{$File::Find::dir} };
-  find {wanted => $want, postprocess => $post, no_chdir => 1}, $dir if -d $dir;
-
-  return sort keys %files;
+  deprecated 'Mojo::Util::files is DEPRECATED in favor of Mojo::File';
+  require Mojo::File;
+  Mojo::File::path(shift)->list_tree(@_)->map('to_string')->each;
 }
 
 sub getopt {
@@ -578,28 +573,6 @@ Dump a Perl data structure with L<Data::Dumper>.
   my $bytes = encode 'UTF-8', $chars;
 
 Encode characters to bytes.
-
-=head2 files
-
-  my @files = files '/tmp/uploads';
-  my @files = files '/tmp/uploads', {hidden => 1};
-
-List all files recursively in a directory.
-
-  # List all templates
-  say for files '/home/sri/myapp/templates';
-
-These options are currently available:
-
-=over 2
-
-=item hidden
-
-  hidden => 1
-
-Include hidden files and directories.
-
-=back
 
 =head2 getopt
 

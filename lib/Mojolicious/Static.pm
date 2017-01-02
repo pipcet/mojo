@@ -1,10 +1,10 @@
 package Mojolicious::Static;
 use Mojo::Base -base;
 
-use File::Spec::Functions 'catfile';
 use Mojo::Asset::File;
 use Mojo::Asset::Memory;
 use Mojo::Date;
+use Mojo::File 'path';
 use Mojo::Home;
 use Mojo::Loader 'data_section';
 use Mojo::Util 'md5_sum';
@@ -41,7 +41,9 @@ sub file {
 
   # Search all paths
   for my $path (@{$self->paths}) {
-    next unless my $asset = $self->_get_file(catfile $path, split('/', $rel));
+    next
+      unless my $asset
+      = $self->_get_file(path($path, split('/', $rel))->to_string);
     return $asset;
   }
 
@@ -49,7 +51,7 @@ sub file {
   if (my $asset = $self->_get_data_file($rel)) { return $asset }
 
   # Search bundled files
-  return $self->_get_file(catfile($PUBLIC, split('/', $rel)));
+  return $self->_get_file(path($PUBLIC, split('/', $rel))->to_string);
 }
 
 sub is_fresh {

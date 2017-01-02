@@ -2,10 +2,9 @@ package Mojo::Home;
 use Mojo::Base -base;
 use overload bool => sub {1}, '""' => sub { shift->to_string }, fallback => 1;
 
-use Cwd qw(abs_path getcwd);
-use File::Basename 'dirname';
-use File::Spec::Functions qw(abs2rel catdir catfile splitdir);
-use Mojo::Util qw(class_to_path deprecated files);
+use Mojo::Util qw(class_to_path deprecated);
+use Mojo::File 'path';
+use Mojo::Util 'class_to_path';
 
 has parts => sub { [] };
 
@@ -13,27 +12,28 @@ sub detect {
   my ($self, $class) = @_;
 
   # Environment variable
-  return $self->parts([splitdir abs_path $ENV{MOJO_HOME}]) if $ENV{MOJO_HOME};
+  return $self->parts(path($ENV{MOJO_HOME})->to_abs->to_array)
+    if $ENV{MOJO_HOME};
 
   # Location of the application class
   if ($class && (my $path = $INC{my $file = class_to_path $class})) {
     $path =~ s/\Q$file\E$//;
-    my @home = splitdir $path;
+    my @home = @{path($path)};
 
     # Remove "lib" and "blib"
     pop @home while @home && ($home[-1] =~ /^b?lib$/ || !length $home[-1]);
 
     # Turn into absolute path
-    return $self->parts([splitdir abs_path catdir(@home) || '.']);
+    return $self->parts(path(@home)->to_abs->to_array);
   }
 
   # Current working directory
-  return $self->parts([splitdir getcwd]);
+  return $self->parts(path->to_array);
 }
 
 sub lib_dir {
-  my $path = catdir @{shift->parts}, 'lib';
-  return -d $path ? $path : undef;
+  my $path = path(@{shift->parts}, 'lib');
+  return -d $path ? $path->to_string : undef;
 }
 
 # DEPRECATED!
@@ -41,26 +41,27 @@ sub list_files {
   deprecated
     'Mojo::Home::list_files is DEPRECATED in favor of Mojo::Util::files';
   my ($self, $dir, $options) = (shift, shift // '', shift);
-  $dir = catdir @{$self->parts}, split('/', $dir);
-  return [map { join '/', splitdir abs2rel($_, $dir) } files $dir, $options];
+  my $base = path(@{$self->parts}, split('/', $dir));
+  $base->list_tree($options)->map(sub { join '/', @{$_->to_rel($base)} })
+    ->to_array;
 }
 
-sub mojo_lib_dir { catdir dirname(__FILE__), '..' }
+sub mojo_lib_dir { path(__FILE__)->dirname->child('..')->to_string }
 
 sub new { @_ > 1 ? shift->SUPER::new->parse(@_) : shift->SUPER::new }
 
-sub parse { shift->parts([splitdir shift]) }
+sub parse { shift->parts(path(shift)->to_array) }
 
 # DEPRECATED!
 sub rel_dir {
   deprecated
     'Mojo::Home::rel_dir is DEPRECATED in favor of Mojo::Home::rel_file';
-  catdir @{shift->parts}, split('/', shift);
+  path(@{shift->parts}, split('/', shift))->to_string;
 }
 
-sub rel_file { catfile @{shift->parts}, split('/', shift) }
+sub rel_file { path(@{shift->parts}, split('/', shift))->to_string }
 
-sub to_string { catdir @{shift->parts} }
+sub to_string { path(@{shift->parts})->to_string }
 
 1;
 
