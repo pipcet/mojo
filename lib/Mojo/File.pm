@@ -21,14 +21,14 @@ use Scalar::Util 'blessed';
 
 our @EXPORT_OK = ('path', 'tempdir');
 
-sub basename { $_[0]->new(scalar File::Basename::basename ${$_[0]}) }
+sub basename { scalar File::Basename::basename ${$_[0]} }
 
 sub child {
   my $self = shift;
   return $self->new($self, @_);
 }
 
-sub dirname { $_[0]->new(scalar File::Basename::dirname ${$_[0]}) }
+sub dirname { scalar File::Basename::dirname ${$_[0]} }
 
 sub list_tree {
   my ($self, $options) = (shift, shift // {});
@@ -74,6 +74,8 @@ sub new {
 
   return $self;
 }
+
+sub parent { $_[0]->new(scalar File::Basename::dirname ${$_[0]}) }
 
 sub path { __PACKAGE__->new(@_) }
 

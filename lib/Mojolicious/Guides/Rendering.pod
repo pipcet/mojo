@@ -1157,7 +1157,7 @@ when C<register> is called.
     my ($self, $app) = @_;
 
     # Append "templates" and "public" directories
-    my $base = path(__FILE__)->dirname->child('AlertAssets');
+    my $base = path(__FILE__)->parent->child('AlertAssets');
     push @{$app->renderer->paths}, $base->child('templates')->to_string;
     push @{$app->static->paths},   $base->child('public')->to_string;
   }

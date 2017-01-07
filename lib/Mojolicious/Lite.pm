@@ -12,8 +12,7 @@ sub import {
   $ENV{MOJO_EXE} ||= (caller)[1];
 
   # Reuse home directory if possible
-  local $ENV{MOJO_HOME} = path($ENV{MOJO_EXE})->dirname->to_string
-    unless $ENV{MOJO_HOME};
+  local $ENV{MOJO_HOME} = path($ENV{MOJO_EXE})->dirname unless $ENV{MOJO_HOME};
 
   # Initialize application class
   my $caller = caller;
@@ -21,7 +20,7 @@ sub import {
   push @{"${caller}::ISA"}, 'Mojo';
 
   # Generate moniker based on filename
-  my $moniker = path($ENV{MOJO_EXE})->basename->to_string;
+  my $moniker = path($ENV{MOJO_EXE})->basename;
   $moniker =~ s/\.(?:pl|pm|t)$//i;
   my $app = shift->new(moniker => $moniker);
 

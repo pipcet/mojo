@@ -36,6 +36,10 @@ is path('file.t')->to_abs->basename, basename(abs_path 'file.t'), 'same path';
 # Dirname
 is path('file.t')->to_abs->dirname, dirname(abs_path 'file.t'), 'same path';
 
+# Parent
+is path('file.t')->to_abs->parent->to_string, path('file.t')->to_abs->dirname,
+  'same path';
+
 # Temporary directory
 my $dir  = tempdir;
 my $path = "$dir";
@@ -53,7 +57,7 @@ ok -d $subdir, 'directory exists';
 # List tree
 is_deeply path('does_not_exist')->list_tree->to_array, [], 'no files';
 is_deeply path(__FILE__)->list_tree->to_array,         [], 'no files';
-my $lib = path(__FILE__)->dirname->child('lib', 'Mojo');
+my $lib = path(__FILE__)->parent->child('lib', 'Mojo');
 my @files = map { path($lib)->child(split '/') } (
   'BaseTest/Base1.pm',  'BaseTest/Base2.pm',
   'BaseTest/Base3.pm',  'DeprecationTest.pm',

@@ -19,7 +19,7 @@ sub run {
     "https://$user:$password\@pause.perl.org/pause/authenquery" => form => {
       HIDDENNAME                        => $user,
       CAN_MULTIPART                     => 1,
-      pause99_add_uri_upload            => path($file)->basename->to_string,
+      pause99_add_uri_upload            => path($file)->basename,
       SUBMIT_pause99_add_uri_httpupload => ' Upload this file from my disk ',
       pause99_add_uri_uri               => '',
       pause99_add_uri_httpupload        => {file => $file},

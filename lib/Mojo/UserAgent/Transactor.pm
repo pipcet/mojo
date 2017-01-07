@@ -208,7 +208,7 @@ sub _multipart {
         if (my $file = delete $value->{file}) {
           $file = Mojo::Asset::File->new(path => $file) unless ref $file;
           $part->asset($file);
-          $value->{filename} //= path($file->path)->basename->to_string
+          $value->{filename} //= path($file->path)->basename
             if $file->isa('Mojo::Asset::File');
         }
 

@@ -1552,7 +1552,7 @@ automatically installed with the modules.
     my $self = shift;
 
     # Switch to installable home directory
-    $self->home->parse(path(__FILE__)->dirname->child('MyApp')->to_string);
+    $self->home->parse(path(__FILE__)->parent->child('MyApp')->to_string);
 
     # Switch to installable "public" directory
     $self->static->paths->[0] = $self->home->rel_file('public');

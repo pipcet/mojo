@@ -46,7 +46,7 @@ sub list_files {
     ->to_array;
 }
 
-sub mojo_lib_dir { path(__FILE__)->dirname->child('..')->to_string }
+sub mojo_lib_dir { path(__FILE__)->parent->parent->to_string }
 
 sub new { @_ > 1 ? shift->SUPER::new->parse(@_) : shift->SUPER::new }
 
