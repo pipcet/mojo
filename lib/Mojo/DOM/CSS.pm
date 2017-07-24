@@ -19,7 +19,7 @@ my $ATTR_RE   = qr/
 
 sub matches {
   my $tree = shift->tree;
-  return $tree->[0] ne 'tag' ? undef : _match(_compile(shift), $tree, $tree);
+  return $tree->[0] ne 'tag' ? undef : _match(_compile(shift), $tree, undef);
 }
 
 sub select     { _select(0, shift->tree, _compile(@_)) }
@@ -28,9 +28,13 @@ sub select_one { _select(1, shift->tree, _compile(@_)) }
 sub _ancestor {
   my ($selectors, $current, $tree, $one, $pos) = @_;
 
+  if (defined($tree) && $current eq $tree) {
+      return undef;
+  }
   while ($current = $current->[3]) {
-    return undef if $current->[0] eq 'root' || $current eq $tree;
+    return undef if $current->[0] eq 'root';
     return 1 if _combinator($selectors, $current, $tree, $pos);
+    return undef if $current eq $tree;
     last if $one;
   }
 
@@ -56,7 +60,7 @@ sub _combinator {
   # Selector
   return undef unless my $c = $selectors->[$pos];
   if (ref $c) {
-    return undef unless _selector($c, $current);
+    return undef unless _selector($c, $current, $tree);
     return 1 unless $c = $selectors->[++$pos];
   }
 
@@ -71,6 +75,32 @@ sub _combinator {
 
   # " " (ancestor)
   return _ancestor($selectors, $current, $tree, 0, ++$pos);
+}
+
+sub _scopize {
+  my $group = _relativize($_[0]);
+
+  for my $selectors (@$group) {
+    unshift @$selectors, [['pc', 'scope']];
+  }
+
+  return $group;
+}
+
+sub _relativize {
+  my $group = $_[0];
+
+  for my $selectors (@$group) {
+    shift @$selectors if ($selectors->[0] && !defined($selectors->[0]->[0]));
+    if ($selectors->[0] && ref $selectors->[0]) {
+      unshift @$selectors, ' ';
+    } elsif (defined($selectors->[0])) {
+    } else {
+      unshift @$selectors, ' ', [];
+    }
+  }
+
+  return $group;
 }
 
 sub _compile {
@@ -102,8 +132,9 @@ sub _compile {
     elsif ($css =~ /\G:([\w\-]+)(?:\(((?:\([^)]+\)|[^)])+)\))?/gcs) {
       my ($name, $args) = (lc $1, $2);
 
-      # ":matches" and ":not" (contains more selectors)
+      # ":matches", ":not", and ":has" (contains more selectors)
       $args = _compile($args) if $name eq 'matches' || $name eq 'not';
+      $args = _relativize(_compile($args)) if $name eq 'has';
 
       # ":nth-*" (with An+B notation)
       $args = _equation($args) if $name =~ /^nth-/;
@@ -157,7 +188,7 @@ sub _match {
 sub _name {qr/(?:^|:)\Q@{[_unescape(shift)]}\E$/}
 
 sub _pc {
-  my ($class, $args, $current) = @_;
+  my ($class, $args, $current, $scope) = @_;
 
   # ":checked"
   return exists $current->[2]{checked} || exists $current->[2]{selected}
@@ -174,6 +205,11 @@ sub _pc {
 
   # ":root"
   return $current->[3] && $current->[3][0] eq 'root' if $class eq 'root';
+
+  return !!_has(1, $current, $args) if $class eq 'has';
+
+  # ":scope"
+  return $current->[0] eq 'root' || ($current eq $scope) if $class eq 'scope';
 
   # ":nth-child", ":nth-last-child", ":nth-of-type" or ":nth-last-of-type"
   if (ref $args) {
@@ -214,8 +250,34 @@ sub _select {
   return $one ? undef : \@results;
 }
 
+sub _has {
+  my ($one, $tree, $group) = @_;
+
+  my $gnew = [];
+  for my $selector (@$group) {
+      my @snew = @$selector;
+      unshift @snew, [['equals',$tree]];
+      push @$gnew, \@snew;
+  }
+  $group = $gnew;
+  if($tree->[0] ne 'root') {
+      $tree = $tree->[3];
+  }
+  my @results;
+  my @queue = @$tree[($tree->[0] eq 'root' ? 1 : 4) .. $#$tree];
+  while (my $current = shift @queue) {
+    next unless $current->[0] eq 'tag';
+
+    unshift @queue, @$current[4 .. $#$current];
+    next unless _match($group, $current, $tree);
+    $one ? return $current : push @results, $current;
+  }
+
+  return $one ? undef : \@results;
+}
+
 sub _selector {
-  my ($selector, $current) = @_;
+  my ($selector, $current, $scope) = @_;
 
   for my $s (@$selector) {
     my $type = $s->[0];
@@ -227,7 +289,9 @@ sub _selector {
     elsif ($type eq 'attr') { return undef unless _attr(@$s[1, 2], $current) }
 
     # Pseudo-class
-    elsif ($type eq 'pc') { return undef unless _pc(@$s[1, 2], $current) }
+    elsif ($type eq 'pc') { return undef unless _pc(@$s[1, 2], $current, $scope) }
+
+    elsif ($type eq 'equals') { return undef unless $current == $s->[1] }
   }
 
   return 1;
