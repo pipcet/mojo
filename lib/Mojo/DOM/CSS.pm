@@ -29,12 +29,12 @@ sub _ancestor {
   my ($selectors, $current, $tree, $one, $pos) = @_;
 
   if (defined($tree) && $current eq $tree) {
-      return undef;
+    return undef;
   }
   while ($current = $current->[3]) {
     return undef if $current->[0] eq 'root';
     return 1 if _combinator($selectors, $current, $tree, $pos);
-    return undef if $current eq $tree;
+    return undef if defined($tree) && $current eq $tree;
     last if $one;
   }
 
@@ -206,6 +206,7 @@ sub _pc {
   # ":root"
   return $current->[3] && $current->[3][0] eq 'root' if $class eq 'root';
 
+  # ":has"
   return !!_has(1, $current, $args) if $class eq 'has';
 
   # ":scope"
@@ -255,13 +256,13 @@ sub _has {
 
   my $gnew = [];
   for my $selector (@$group) {
-      my @snew = @$selector;
-      unshift @snew, [['equals',$tree]];
-      push @$gnew, \@snew;
+    my @snew = @$selector;
+    unshift @snew, [['equals',$tree]];
+    push @$gnew, \@snew;
   }
   $group = $gnew;
   if($tree->[0] ne 'root') {
-      $tree = $tree->[3];
+    $tree = $tree->[3];
   }
   my @results;
   my @queue = @$tree[($tree->[0] eq 'root' ? 1 : 4) .. $#$tree];
