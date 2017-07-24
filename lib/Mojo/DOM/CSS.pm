@@ -19,21 +19,21 @@ my $ATTR_RE   = qr/
 
 sub matches {
   my $tree = shift->tree;
-  return $tree->[0] ne 'tag' ? undef : _match(_compile(shift), $tree, undef);
+  return $tree->[0] ne 'tag' ? undef : _match(_compile(shift), $tree, undef, $tree);
 }
 
-sub select     { _select(0, shift->tree, _compile(@_)) }
-sub select_one { _select(1, shift->tree, _compile(@_)) }
+sub select     { my $tree = shift->tree; my $ptree = $tree; if ($tree->[0] eq 'tag') { $ptree = $tree->[3]; } _select(0, $ptree, $tree, _scopize(_compile(@_))) }
+sub select_one { my $tree = shift->tree; my $ptree = $tree; if ($tree->[0] eq 'tag') { $ptree = $tree->[3]; } _select(1, $ptree, $tree, _scopize(_compile(@_))) }
 
 sub _ancestor {
-  my ($selectors, $current, $tree, $one, $pos) = @_;
+  my ($selectors, $current, $tree, $scope, $one, $pos) = @_;
 
-  if (defined($tree) && $current eq $tree) {
+  if (defined($tree) && $current eq $tree || $current->[0] eq 'root') {
     return undef;
   }
   while ($current = $current->[3]) {
+    return 1 if _combinator($selectors, $current, $tree, $scope, $pos);
     return undef if $current->[0] eq 'root';
-    return 1 if _combinator($selectors, $current, $tree, $pos);
     return undef if defined($tree) && $current eq $tree;
     last if $one;
   }
@@ -43,6 +43,8 @@ sub _ancestor {
 
 sub _attr {
   my ($name_re, $value_re, $current) = @_;
+
+  return undef if $current->[0] eq 'root';
 
   my $attrs = $current->[2];
   for my $name (keys %$attrs) {
@@ -55,32 +57,33 @@ sub _attr {
 }
 
 sub _combinator {
-  my ($selectors, $current, $tree, $pos) = @_;
+  my ($selectors, $current, $tree, $scope, $pos) = @_;
 
   # Selector
   return undef unless my $c = $selectors->[$pos];
   if (ref $c) {
-    return undef unless _selector($c, $current, $tree);
+    return undef unless _selector($c, $current, $tree, $scope);
     return 1 unless $c = $selectors->[++$pos];
   }
 
   # ">" (parent only)
-  return _ancestor($selectors, $current, $tree, 1, ++$pos) if $c eq '>';
+  return _ancestor($selectors, $current, $tree, $scope, 1, ++$pos) if $c eq '>';
 
   # "~" (preceding siblings)
-  return _sibling($selectors, $current, $tree, 0, ++$pos) if $c eq '~';
+  return _sibling($selectors, $current, $tree, $scope, 0, ++$pos) if $c eq '~';
 
   # "+" (immediately preceding siblings)
-  return _sibling($selectors, $current, $tree, 1, ++$pos) if $c eq '+';
+  return _sibling($selectors, $current, $tree, $scope, 1, ++$pos) if $c eq '+';
 
   # " " (ancestor)
-  return _ancestor($selectors, $current, $tree, 0, ++$pos);
+  return _ancestor($selectors, $current, $tree, $scope, 0, ++$pos);
 }
 
 sub _scopize {
   my $group = _relativize($_[0]);
 
   for my $selectors (@$group) {
+    next if ref($selectors->[0]) and $selectors->[0][0][0] eq 'pc' and $selectors->[0][0][1] eq 'scope';
     unshift @$selectors, [['pc', 'scope']];
   }
 
@@ -91,7 +94,8 @@ sub _relativize {
   my $group = $_[0];
 
   for my $selectors (@$group) {
-    shift @$selectors if ($selectors->[0] && !defined($selectors->[0]->[0]));
+    next if ref($selectors->[0]) and defined($selectors->[0][0][0]) and $selectors->[0][0][0] eq 'pc' and $selectors->[0][0][1] eq 'scope';
+    shift @$selectors if ($selectors->[0] && !defined($selectors->[0][0][0]));
     if ($selectors->[0] && ref $selectors->[0]) {
       unshift @$selectors, ' ';
     } elsif (defined($selectors->[0])) {
@@ -180,25 +184,29 @@ sub _equation {
 }
 
 sub _match {
-  my ($group, $current, $tree) = @_;
-  _combinator([reverse @$_], $current, $tree, 0) and return 1 for @$group;
+  my ($group, $current, $tree, $scope) = @_;
+  _combinator([reverse @$_], $current, $tree, $scope, 0) and return 1 for @$group;
   return undef;
 }
 
 sub _name {qr/(?:^|:)\Q@{[_unescape(shift)]}\E$/}
 
 sub _pc {
-  my ($class, $args, $current, $scope) = @_;
+  my ($class, $args, $current, $tree, $scope) = @_;
+
+  # ":scope"
+  return ($current eq $scope) if $class eq 'scope';
+  return (!defined $scope) if $current->[0] eq 'root';
 
   # ":checked"
   return exists $current->[2]{checked} || exists $current->[2]{selected}
     if $class eq 'checked';
 
   # ":not"
-  return !_match($args, $current, $current) if $class eq 'not';
+  return !_match($args, $current, $current, $scope) if $class eq 'not';
 
   # ":matches"
-  return !!_match($args, $current, $current) if $class eq 'matches';
+  return !!_match($args, $current, $current, $scope) if $class eq 'matches';
 
   # ":empty"
   return !grep { !_empty($_) } @$current[4 .. $#$current] if $class eq 'empty';
@@ -208,9 +216,6 @@ sub _pc {
 
   # ":has"
   return !!_has(1, $current, $args) if $class eq 'has';
-
-  # ":scope"
-  return $current->[0] eq 'root' || ($current eq $scope) if $class eq 'scope';
 
   # ":nth-child", ":nth-last-child", ":nth-of-type" or ":nth-last-of-type"
   if (ref $args) {
@@ -236,7 +241,7 @@ sub _pc {
 }
 
 sub _select {
-  my ($one, $tree, $group) = @_;
+  my ($one, $tree, $scope, $group) = @_;
 
   my @results;
   my @queue = @$tree[($tree->[0] eq 'root' ? 1 : 4) .. $#$tree];
@@ -244,7 +249,7 @@ sub _select {
     next unless $current->[0] eq 'tag';
 
     unshift @queue, @$current[4 .. $#$current];
-    next unless _match($group, $current, $tree);
+    next unless _match($group, $current, $tree, $scope);
     $one ? return $current : push @results, $current;
   }
 
@@ -254,6 +259,7 @@ sub _select {
 sub _has {
   my ($one, $tree, $group) = @_;
 
+  my $scope = $tree;
   my $gnew = [];
   for my $selector (@$group) {
     my @snew = @$selector;
@@ -261,7 +267,7 @@ sub _has {
     push @$gnew, \@snew;
   }
   $group = $gnew;
-  if($tree->[0] ne 'root') {
+  if($tree->[0] eq 'tag') {
     $tree = $tree->[3];
   }
   my @results;
@@ -270,7 +276,7 @@ sub _has {
     next unless $current->[0] eq 'tag';
 
     unshift @queue, @$current[4 .. $#$current];
-    next unless _match($group, $current, $tree);
+    next unless _match($group, $current, $tree, $scope);
     $one ? return $current : push @results, $current;
   }
 
@@ -278,7 +284,7 @@ sub _has {
 }
 
 sub _selector {
-  my ($selector, $current, $scope) = @_;
+  my ($selector, $current, $tree, $scope) = @_;
 
   for my $s (@$selector) {
     my $type = $s->[0];
@@ -290,7 +296,7 @@ sub _selector {
     elsif ($type eq 'attr') { return undef unless _attr(@$s[1, 2], $current) }
 
     # Pseudo-class
-    elsif ($type eq 'pc') { return undef unless _pc(@$s[1, 2], $current, $scope) }
+    elsif ($type eq 'pc') { return undef unless _pc(@$s[1, 2], $current, $tree, $scope) }
 
     elsif ($type eq 'equals') { return undef unless $current == $s->[1] }
   }
@@ -299,17 +305,17 @@ sub _selector {
 }
 
 sub _sibling {
-  my ($selectors, $current, $tree, $immediate, $pos) = @_;
+  my ($selectors, $current, $tree, $scope, $immediate, $pos) = @_;
 
   my $found;
   for my $sibling (@{_siblings($current)}) {
     return $found if $sibling eq $current;
 
     # "+" (immediately preceding sibling)
-    if ($immediate) { $found = _combinator($selectors, $sibling, $tree, $pos) }
+    if ($immediate) { $found = _combinator($selectors, $sibling, $tree, $scope, $pos) }
 
     # "~" (preceding sibling)
-    else { return 1 if _combinator($selectors, $sibling, $tree, $pos) }
+    else { return 1 if _combinator($selectors, $sibling, $tree, $scope, $pos) }
   }
 
   return undef;
