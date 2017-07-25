@@ -138,7 +138,7 @@ sub _compile {
 
       # ":matches", ":not", and ":has" (contains more selectors)
       $args = _compile($args) if $name eq 'matches' || $name eq 'not';
-      $args = _relativize(_compile($args)) if $name eq 'has';
+      $args = _scopize(_compile($args)) if $name eq 'has';
 
       # ":nth-*" (with An+B notation)
       $args = _equation($args) if $name =~ /^nth-/;
@@ -260,14 +260,7 @@ sub _has {
   my ($one, $tree, $group) = @_;
 
   my $scope = $tree;
-  my $gnew = [];
-  for my $selector (@$group) {
-    my @snew = @$selector;
-    unshift @snew, [['equals',$tree]];
-    push @$gnew, \@snew;
-  }
-  $group = $gnew;
-  if($tree->[0] eq 'tag') {
+  if ($tree->[0] eq 'tag') {
     $tree = $tree->[3];
   }
   my @results;
@@ -297,8 +290,6 @@ sub _selector {
 
     # Pseudo-class
     elsif ($type eq 'pc') { return undef unless _pc(@$s[1, 2], $current, $tree, $scope) }
-
-    elsif ($type eq 'equals') { return undef unless $current == $s->[1] }
   }
 
   return 1;
